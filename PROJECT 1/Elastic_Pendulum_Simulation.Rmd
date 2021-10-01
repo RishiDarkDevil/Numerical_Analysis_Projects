@@ -1,0 +1,121 @@
+---
+title: "Elastic Pendulum Simulation"
+author: "Rishi Dey Chowdhury"
+date: "7/26/2021"
+output: 
+  html_document:
+  keep_md: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(interval = 0.01)
+library(gifski)
+library(tidyverse)
+```
+
+# ELASTIC PENDULUM SIMULATION
+
+Here we will try to simulate the motion of Elastic Pendulum with **Euler's Method**. We will first figure out the equations of motion and then will code them.
+
+### OBJECTIVE
+
+Replace the simple pendulum's inextensible rod with a spring of spring constant $\gamma$.
+
+Simulate the motion of the pendulum numerically with the starting values as $l = 4$, $x(0) = 1$, $y(0) = -2$, $x'(0) = y'(0) = 0$; where $l$ is the natural length of the spring, $x,\ y$ are the displacement in the x and y direction respectively and the derivatives of them have the usual notation of $x',\ y'$ which indicate velocity in the $x, \ y$ direction.
+
+### EQUATIONS OF MOTION
+
+The tension in the spring is given by -
+
+$$
+T = \gamma.(\sqrt{x^2+y^2} - l)
+$$
+
+which follows from the Spring's Force Equation as the extension in the spring at any given time will be given by $\Delta x = \sqrt{x^2 + y^2}-l$. Thus, the force is given by $\gamma.\Delta x$.
+
+$$
+a_x = -\frac{T.(x/\sqrt{x^2+y^2})}{m}
+$$
+
+$$
+a_y = -\frac{T.(y/\sqrt{x^2+y^2})}{m} - \frac{g}{m}
+$$
+
+The above expressions are for acceleration in the $x$ and $y$ direction respectively.
+
+$$
+v_x = v_0\ +\ a_x.\delta t 
+$$
+
+$$
+v_y = v_0\ +\ a_y.\delta t
+$$ The above expressions are for velocity, similarly for displacement we get the following expressions.
+
+$$
+x = x_0\ +\ v_x.\delta t
+$$ $$
+y = y_0\ +\ v_y.\delta t
+$$
+
+These are the complete set of equations needed to use Euler Method to simulate the pendulum's motion.
+
+### SIMULATION CODE & RESULTS
+
+The following is the code of the spring pendulum simulation.
+
+```{r simulation}
+# SPRING PENDULUM
+g = 9.8
+
+d = function(x, y) sqrt(x^2 + y^2)
+
+spring.pendulum = function(k, l, x0, y0, vx0, vy0, n, dt, m){
+  x = rep(0, n)
+  y = rep(0, n)
+  vx = rep(0, n)
+  vy = rep(0, n)
+  ax = rep(0, n)
+  ay = rep(0, n)
+  t = rep(0, n)
+  
+  x[1] = x0
+  y[1] = y0
+  vx[1] = vx0
+  vy[1] = vy0
+  ax[1] = 0
+  ay[1] = -g
+  t[1] = 0
+  
+  for (i in 2:n) {
+    t[i] = t[i-1] + dt
+    ax[i] = -k*(d(x[i-1], y[i-1])-l)*x[i-1]/d(x[i-1], y[i-1])/m
+    ay[i] = -(k*(d(x[i-1], y[i-1])-l)*y[i-1]/d(x[i-1], y[i-1]))/m - g/m
+    vx[i] = vx[i-1] + ax[i-1]*dt
+    vy[i] = vy[i-1] + ay[i-1]*dt
+    x[i] = x[i-1] + vx[i-1]*dt + ax[i-1]*(dt^2)/2
+    y[i] = y[i-1] + vy[i-1]*dt + ay[i-1]*(dt^2)/2
+    plotting_data <- tibble(x = x, y = y)
+    p <- plotting_data %>%
+      ggplot(aes(x, y)) +
+      geom_line(data = tibble(x = c(0, x[i]), y = c(0, y[i])),aes(x = x, y = y), size = 1.5, color = "blue") +
+      geom_point(aes(x = x[i], y = y[i]), color = "red", size = 3) +
+      coord_cartesian(xlim = c(-10, 10), ylim = c(-50, 50)) +
+      theme_bw() +
+      ggtitle("Spring Pendulum Simulation")
+    print(p)
+    Sys.sleep(0.04)
+  }
+}
+```
+
+Here we have created vectors(arrays) for each of the quantities we will need to calculate and then we simply update the next value in the loop using the immediate previous values. Finally we plot them.
+
+Let's see how it works.
+
+```{r run_simulation, animation.hook='gifski', cache=TRUE}
+spring.pendulum(2, 4, 1, -2, 0, 0, 1000, 0.2, 50)
+```
+
+It looks pretty much like a spring pendulum.
+
+**Some Drawbacks of Using Euler Method** is that after a considerable number of steps the behaviour of the pendulum becomes erratic because of the small errors that keep accumulating at each step and ends up causing large deflection from the actual path.

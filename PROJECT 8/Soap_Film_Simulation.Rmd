@@ -1,0 +1,471 @@
+---
+title: "SOAP FILM SIMULATION"
+author: "Rishi Dey Chowdhury"
+date: "7/31/2021"
+output: 
+  html_document:
+  keep_md: TRUE
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set()
+library(tidyverse)
+library(plotly)
+library(knitr)
+library(rgl)
+library(plot3D)
+```
+
+Here we will Solve Large Sparse Matrix System with Iterative Methods to obtain the solution and will see an application of it.
+
+### OBJECTIVE
+
+Simulate the natural shape of a Soap Film clinging on a frame with sides $0,\ x,\ 1,\ x^3$. Use 50 sub-divisions for each side.
+
+```{r frame, warning=FALSE, echo=FALSE}
+# Number of partitions on each side
+n <- 50
+
+# Creating the boundaries of the square
+edge.1 <- rep(0, n+1)
+edge.2 <- seq(0, 1, length.out = n+1)
+edge.3 <- edge.1 + 1
+edge.4 <- edge.2^3
+
+# List of all the boundary heights
+c2 <- c(edge.3)
+for (i in 2:n) {
+  c2 <- c(c2, rev(edge.4)[i], rev(edge.2)[i])
+}
+c2 <- c(c2, edge.1)
+# |-----Edge.3------|
+# |                 |
+# |                 |
+# |Edge.2           |Edge.4
+# |                 |
+# |                 |
+# |-----Edge.1------|
+
+
+z <- c(edge.1, edge.4, edge.3, edge.2)
+x <- c(edge.2, edge.3, rev(edge.2), edge.1)
+y <- c(edge.1, edge.2, edge.3, edge.2)
+
+bd.frame <- tibble(x = x, y = y, z = z)
+fig <- plot_ly(bd.frame %>% mutate(x = 1-x, y = 1-y), x = ~x, y = ~y, z = ~z, type = 'scatter3d', mode = 'lines+markers',
+               line = list(width = 15, color = 'viridis'),
+               marker = list(size = 5, color = 'Greens'), source = "Plot1")
+fig
+```
+
+### SYSTEM OF EQUATIONS
+
+To find the natural shape of the soap film we should minimize the surface tension. The Elastic Potential Energy is given by -
+
+$$
+E(u)\ =\ \int\int_R{(u_x)^2\ +\ (u_y)^2}\ dx\ dy
+$$
+
+where, $u(x,y)$ denotes the surface of the the soap-film.
+
+$E(u)$ needs to be minimized so that it satisfies the boundary condition that the $u(x,y)$ must match the frame height at the boundary.
+
+We will solve the above posed problem numerically.
+
+We first triangulate the base into smaller parts and then we obtain cone shaped(better to call them pyramids) basis functions for each elevated point to a height of $1$.
+
+```{r basis_function, warning=FALSE, echo=FALSE}
+# Basis Functions
+# Trying 3D Plot
+x1 <- seq(0, 1, length.out = n+1)
+y1 <- rev(seq(0, 1, length.out = n+1))
+
+
+soap.film <- cbind(expand.grid(x1, y1), rep(0, nrow(expand.grid(x1, y1))))
+soap.film[n,3] <- 1
+soap.film[(n-2)^2,3] <- 1
+colnames(soap.film) <- c('x', 'y', 'z')
+soap.film <- as_tibble(soap.film) %>%
+  arrange(x,y)
+
+z.matrix <- matrix(rep(0, (n+1)^2), n+1)
+k <- 1
+for (i in 1:(n+1)) {
+  for (j in 1:(n+1)) {
+    z.matrix[i, j] <- soap.film$z[k]
+    k = k+1
+  }
+}
+
+a <- mesh(x1,y1)
+u <- a$x ; v <- a$y
+x <- u
+y <- v
+z <- soap.film$z
+
+z <- z.matrix
+p <- plot_ly(source = "Plot2") %>%
+  add_surface(x = ~x, y = ~y, z = ~z.matrix)
+p
+```
+
+Above we can see 2 such examples of basis cones. Now, we observe each basis cone is made up of planes, pertaining to the triangles which became slanted to pop that basis cone up. So, we can write each basis cone as -
+
+$$
+\phi(x,y)\ =\ \alpha_{ij}\ +\ \beta_{ij}.x\ +\ \gamma_{ij}.y\ ,\ \forall\ (x,y)\in\ T_i
+$$
+
+where, $T_i$ indicates the triangular section which is a part of the basis function, if some $T_k$ is not a part then the coefficients will be $0$.
+
+Hence, we can now approximate the shape of the soap-film as linear-combination of these basis functions viz.
+
+$$
+u(x,y)\ =\ \sum_jc_j.\phi_j(x,y)
+$$
+
+Thus, the problem reduces to finding $c_j\ 's$ .
+
+We can now work on minimizing Surface Tension.
+
+$$
+E(u)\ =\ \sum_i\int\int_{T^o_{i}}(\sum_j c_j.\beta_{ij})^2\ +\ (\sum_j c_j.\gamma_{ij})^2\ =\ \sum_i|T_i|.((\sum_j c_j.\beta_{ij})^2\ +\ (\sum_j c_j.\gamma_{ij})^2)
+$$
+
+where, $|T_i|$ denotes the area of $T_i$.
+
+Thus, we see the above final expression is nothing but a Quadratic Form. So we can write,
+
+$$
+E(u)\ =\ c'Mc
+$$
+
+where $M$ is the $N.N.D.$ matrix with $(j,j')$-th entry given by -
+
+$$
+m_{j\ j'}\ =\ \sum_i|T_i|.(\beta_{ij}.\beta_{ij'}\ +\ \gamma_{ij}.\gamma_{ij'} )
+$$
+
+Now, we know the boundary heights so we can partition $c$ as $(c_1, c_2)$. Then $c_2$ is known and $c_1$ is to be chosen to minimize $E(u)$.
+
+So, we can partition $M$ accordingly as-
+
+$$
+M\ =\ \begin{bmatrix}
+M_{11}&M_{12} \\
+M_{21}&M_{22}
+\end{bmatrix}
+$$
+
+Then, Differentiating the Quadratic Form gives us -
+
+$$
+M_{11}.c1\ =\ -M_{12}.c_2
+$$
+
+Now, $M_{11}$ is a Sparse-Matrix, but it happens to be non-singular. So, we can obtain a unique solution. We will be using Iterative Algorithm to solve this part.
+
+### SIMULATION CODE & RESULTS
+
+-   We initialize the basic stuffs given to us and which are known first.
+
+```{r initial_known_stuffz, warning=FALSE}
+# Number of partitions on each side
+n <- 50
+
+# Creating the boundaries of the square
+edge.1 <- rep(0, n+1)
+edge.2 <- seq(0, 1, length.out = n+1)
+edge.3 <- edge.1 + 1
+edge.4 <- edge.2^3
+
+# List of all the boundary heights
+c2 <- c(edge.3)
+for (i in 2:n) {
+  c2 <- c(c2, rev(edge.4)[i], rev(edge.2)[i])
+}
+c2 <- c(c2, edge.1)
+
+# |-----Edge.3------|
+# |                 |
+# |                 |
+# |Edge.4           |Edge.2
+# |                 |
+# |                 |
+# |-----Edge.1------|
+
+
+z <- c(edge.1, edge.4, edge.3, edge.2)
+x <- c(edge.2, edge.3, rev(edge.2), edge.1)
+y <- c(edge.1, edge.2, edge.3, edge.2)
+
+bd.frame <- tibble(x = x, y = y, z = z)
+
+# ---------------------- +ve X-axis
+# |
+# |    Z-axis is outwards
+# |
+# | -ve Y-axis
+
+# Initializing some important stuffz
+gap <- 1/n
+T.area <- 0.5 * gap * gap # Area of the triangle
+nbdpts <- length(c2)
+pts <- (n+1)*(n+1) # All the points
+nt <- n*n*2 # Number of triangles
+
+
+# ---------------------- +ve X-axis
+# |1 \ 2| 3\ 4| 5\ 6|7 \ 8| ---> My triangualtion is something like this  
+# |9 \10| Z-axis is outwards
+# |
+# | -ve Y-axis
+
+# A  F
+# B 1 E --> 1 indicates a point and A,B,C,D,E,F refers to the triangles surrounding it in the resp. direction
+#  C  D
+# Let us code A-->1, B-->2, C-->3, D-->4, E-->5, F-->6
+
+# Here I have changed the numbering pattern of the matrix a bit --> Interior points first are numbered to make partitioning easier
+# 10  11  12  13  14
+# 15  1   2   3   16
+# 17  4   5   6   18
+# 19  7   8   9   20
+# 21  22  23  24  25
+```
+
+-   Now, to keep track of which point has non-zero values of $\beta$ and $\gamma$ with which other associated points, using a kind of table look-up strategy.
+
+```{r table_look_up, cache=TRUE, warning=FALSE}
+triangle.point.map <- matrix(rep(0, pts*nt), pts, nt) # Creating Points --> Triangle Numbers of which it is a part of
+triangle.point.map.number <- matrix(rep(0, pts*6), nrow = pts, ncol = 6)
+
+# Finding the edge points
+edge.4.points <- c((n-1)^2 + 1)
+edge.2.points <- c()
+edge.1.points <- c((n-1)^2 + n + 2 + 2*(n-1))
+edge.3.points <- c((n-1)^2 + 1)
+for (i in 1:n){
+  edge.4.points <- c(edge.4.points, (n-1)^2 + n + 2 + 2*(i-1))
+  edge.2.points <- c(edge.2.points, (n-1)^2 + n + 1 + 2*(i-1))
+  edge.1.points <- c(edge.1.points, (n-1)^2 + n + 2 + 2*(n-1) + i)
+  edge.3.points <- c(edge.3.points, (n-1)^2 + 1 + i)
+}
+edge.2.points <- c(edge.2.points, pts)
+bd.points <- c(edge.1.points, edge.2.points, edge.3.points, edge.4.points)
+
+# Filling triangle.point.map
+for (i in 1:pts) {
+  # Marking All the interior points
+  if (!(i %in% bd.points)) {
+    if (i %% (n-1) == 0) {
+      triangle.point.map.number[i, 3] = (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2 - 2 # Marking C
+      triangle.point.map.number[i, 4] = (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2 - 2 + 1 # Marking D
+      triangle.point.map.number[i, 5] = (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2 - 2 + 1 + 1 # Marking E
+      triangle.point.map.number[i, 2] = (2*i - 1) + (i%/%(n-1))*2 - 2 # Marking B
+      triangle.point.map.number[i, 1] = (2*i - 1) + (i%/%(n-1))*2 - 2 + 1 # Marking A
+      triangle.point.map.number[i, 6] = (2*i - 1) + (i%/%(n-1))*2 - 2 + 1 + 1 # Marking F
+      
+      triangle.point.map[i, (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2 - 2] = 3 # Marking C
+      triangle.point.map[i, (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2 - 2 + 1] = 4 # Marking D
+      triangle.point.map[i, (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2 - 2 + 1 + 1] = 5 # Marking E
+      triangle.point.map[i, (2*i - 1) + (i%/%(n-1))*2 - 2] = 2 # Marking B
+      triangle.point.map[i, (2*i - 1) + (i%/%(n-1))*2 - 2 + 1] = 1 # Marking A
+      triangle.point.map[i, (2*i - 1) + (i%/%(n-1))*2 - 2 + 1 + 1] = 6 # Marking F
+    }
+    else {
+      triangle.point.map.number[i, 3] = (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2 # Marking C
+      triangle.point.map.number[i, 4] = (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2 + 1 # Marking D
+      triangle.point.map.number[i, 5] = (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2 + 1 + 1 # Marking E
+      triangle.point.map.number[i, 2] = (2*i - 1) + (i%/%(n-1))*2 # Marking B
+      triangle.point.map.number[i, 1] = (2*i - 1) + (i%/%(n-1))*2 + 1 # Marking A
+      triangle.point.map.number[i, 6] = (2*i - 1) + (i%/%(n-1))*2 + 1 + 1 # Marking F
+      
+      triangle.point.map[i, (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2] = 3 # Marking C
+      triangle.point.map[i, (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2 + 1] = 4 # Marking D
+      triangle.point.map[i, (i%/%(n-1) + 1)*(n*2) + (i%%(n-1))*2 + 1 + 1] = 5 # Marking E
+      triangle.point.map[i, (2*i - 1) + (i%/%(n-1))*2] = 2 # Marking B
+      triangle.point.map[i, (2*i - 1) + (i%/%(n-1))*2 + 1] = 1 # Marking A
+      triangle.point.map[i, (2*i - 1) + (i%/%(n-1))*2 + 1 + 1] = 6 # Marking F
+    }
+  }
+  # Marking All the Edge.1 Points
+  if (i %in% bd.points) {
+    # Edge.1 Marking
+    if (i %in% edge.1.points[-(n+1)]){
+      triangle.point.map.number[i, 6] = 2*n*(n-1) + 2*(i%%(n+1)) - 1 # Marking F
+      triangle.point.map[i, 2*n*(n-1) + 2*(i%%(n+1)) - 1] = 6 # Marking F
+    }
+    if (i %in% edge.1.points[-1]){
+      triangle.point.map.number[i, 1] = 2*n*(n-1) + 2*(i%%(edge.1.points[1])) # Marking A
+      triangle.point.map.number[i, 2] = 2*n*(n-1) + 2*(i%%(edge.1.points[1])) - 1 # Marking B
+      triangle.point.map[i, 2*n*(n-1) + 2*(i%%(edge.1.points[1]))] = 1 # Marking A
+      triangle.point.map[i, 2*n*(n-1) + 2*(i%%(edge.1.points[1])) - 1] = 2 # Marking B
+    }
+    # Edge.2 Marking
+    # ---Done outside the end of this loop
+    # Edge.3 Marking
+    if (i %in% edge.3.points[-(n+1)]) {
+      triangle.point.map.number[i, 5] = 2*(i%%(edge.3.points[1])) + 2 # Marking E
+      triangle.point.map.number[i, 4] = 2*(i%%(edge.3.points[1])) + 2 - 1 # Marking D
+      triangle.point.map[i, 2*(i%%(edge.3.points[1])) + 2] = 5 # Marking E
+      triangle.point.map[i, 2*(i%%(edge.3.points[1])) + 2 - 1] = 4 # Marking D
+    }
+    if (i %in% edge.3.points[-c(1,n+1)]){
+      triangle.point.map.number[i, 3] = 2*(i%%(edge.3.points[1])) + 2 - 1 - 1 # Marking C
+      triangle.point.map[i, 2*(i%%(edge.3.points[1])) + 2 - 1 - 1] = 3 # Marking C
+    }
+    # Edge.4 Marking
+    # ---Done outside the end of this loop
+  }
+}
+# Edge.2 Marking
+for (i in 1:n){
+  triangle.point.map.number[edge.2.points[i], 3] = i*2*n # Marking C
+  triangle.point.map[edge.2.points[i], i*2*n] = 3 # Marking C
+}
+for (i in 2:n){
+  triangle.point.map.number[edge.2.points[i], 2] = (i-1)*2*n - 1 # Marking B
+  triangle.point.map.number[edge.2.points[i], 1] = (i-1)*2*n # Marking A
+  triangle.point.map[edge.2.points[i], (i-1)*2*n - 1] = 2 # Marking B
+  triangle.point.map[edge.2.points[i], (i-1)*2*n] = 1 # Marking A
+}
+# Edge.4 Marking
+for (i in 2:n) {
+  triangle.point.map.number[edge.4.points[i], 4] = (i-1)*2*n # Marking D
+  triangle.point.map.number[edge.4.points[i], 5] = (i-1)*2*n + 1 + 1 # Marking E
+  triangle.point.map.number[edge.4.points[i], 6] = (i-1)*2*n + 1 - 2*n # Marking F
+  triangle.point.map[edge.4.points[i], (i-1)*2*n + 1] = 4 # Marking D
+  triangle.point.map[edge.4.points[i], (i-1)*2*n + 1 + 1] = 5 # Marking E
+  triangle.point.map[edge.4.points[i], (i-1)*2*n + 1 - 2*n] = 6 # Marking F
+}
+kable(triangle.point.map.number[1:5, 1:6], caption = "Point Association Table")
+```
+
+-   Now, we just need to look up this table and fill up the $M$ matrix. We will be needed only the upper partitioned parts of $M$, so we will calculate only them.
+
+```{r fill_M, cache=TRUE, warning=FALSE}
+# The slopes of A, B, C, D, E, F planes 
+beta.ij <- c(0, 1/gap, 1/gap, 0, -1/gap, -1/gap)
+gamma.ij <- c(-1/gap, 0, 1/gap, 1/gap, 0, -1/gap)
+
+beta.slope <- function(k) {
+  if (k == 0)
+    return(beta.ij[1])
+  else
+    return(beta.ij[k])
+} 
+gamma.slope <- function(k) {
+  if (k == 0)
+    return(0)
+  else
+    return(gamma.ij[k])
+} 
+
+# This is our M Matrix
+M <- matrix(rep(0, pts*(pts - length(c2))), nrow = (pts - length(c2)))
+
+# Saving on Computation
+triangle.point.map.beta <- matrix(rep(0, pts*nt), pts, nt)
+triangle.point.map.gamma <- matrix(rep(0, pts*nt), pts, nt)
+
+# Trying to improve computation speed
+for (i in 1:pts){
+  triangle.point.map.beta[i,triangle.point.map.number[i,]] <- unlist(lapply(triangle.point.map[i,triangle.point.map.number[i,]], beta.slope))
+  triangle.point.map.gamma[i,triangle.point.map.number[i,]] <- unlist(lapply(triangle.point.map[i,triangle.point.map.number[i,]], gamma.slope))
+}
+
+# Filling M
+for (i in 1:(pts - length(c2))) {
+  for (j in 1:pts) {
+    if (abs(i-j) <= 1 | abs(i-j) == n-1 | abs(i-j) == n | i %in% bd.points | j %in% bd.points) {
+      M[i, j] = T.area*sum(triangle.point.map.beta[i,triangle.point.map.number[i,]]*triangle.point.map.beta[j,triangle.point.map.number[i,]] + triangle.point.map.gamma[i,triangle.point.map.number[i,]]*triangle.point.map.gamma[j,triangle.point.map.number[i,]])
+    }
+  }
+}
+
+kable(M[1:5, 1:5], caption = "M Matrix")
+```
+
+-   We will be using Gauss-Seidel to solve the resulting system(But I present the Gauss-Jacobi Function too) so let's take a look at the function which does that -
+
+```{r Gauss_Seidel}
+# Gauss-Jacobi Method
+Solve.Gauss.Jacobi <- function(A, b, guess, n, tol){
+  x <- guess
+  dd <- diag(A)
+  diag(A) <- rep(0, nrow(A)) 
+  for (i in 1:n) {
+    x_old <- x
+    x <- (b - (A %*% x))/dd
+    #print(t(x))
+    if(sqrt(sum((x-x_old)^2)) < tol)
+      return(x)
+  }
+  warning("Maximum Iteration Exceeded!")
+  return(x)
+}
+
+# Gauss-Seidel Method
+Solve.Gauss.Seidel <- function(A, b, guess, n, tol){
+  x <- guess
+  dd <- diag(A)
+  diag(A) <- rep(0, nrow(A)) 
+  for (i in 1:n) {
+    x_old <- x
+    for (k in 1:length(b))
+      x[k] <- (b[k] - sum(A[k,]*x))/dd[k]
+    #print(t(x))
+    if(sqrt(sum((x-x_old)^2)) < tol)
+      return(t(t(x)))
+  }
+  warning("Maximum Iteration Exceeded!")
+  return(t(t(x)))
+}
+```
+
+-   Now, we can use the above Gauss_Seidel function to solve the Matrix System.
+
+```{r solving, warning=FALSE, cache=TRUE}
+M11 <- M[1:(pts - length(c2)), 1:(pts - length(c2))]
+M12 <- M[1:(pts - length(c2)), (pts - length(c2) + 1):pts]
+RHS <- -M12 %*% c2
+c1 <- Solve.Gauss.Seidel(M11, RHS, seq(0, 1, length.out = length(RHS)), 2000, 1e-3)
+kable(head(c1), caption = "First Few Entries of c1", col.names = c("c1"))
+```
+
+-   Let's Visualize the solution.
+
+```{r visualize_solution, warning=FALSE}
+x1 <- seq(0, 1, length.out = n+1)
+y1 <- rev(seq(0, 1, length.out = n+1))
+q <- c(rev(edge.3))
+for(i in 2:n){
+  q <- c(q, rev(edge.4)[i],c1[((n-1)*(i-2)+1):((n-1)*(i-2)+1+(n-2))], rev(edge.2)[i])
+}
+q <- c(q, rev(edge.1))
+soap.film <- cbind(expand.grid(x1, y1), q)
+colnames(soap.film) <- c('x', 'y', 'z')
+soap.film <- as_tibble(soap.film) %>%
+  arrange(x,y)
+z.matrix <- matrix(rep(0, (n+1)^2), n+1)
+k <- 1
+for (i in 1:(n+1)) {
+  for (j in 1:(n+1)) {
+    z.matrix[i, j] <- soap.film$z[k]
+    k = k+1
+  }
+}
+a <- mesh(x1,y1)
+u <- a$x ; v <- a$y
+x <- u
+y <- v
+z <- soap.film$z
+z <- z.matrix
+all.points <- tibble(x = x, y = y)
+fig <- plot_ly(bd.frame %>% mutate(x = 1-x, y = 1-y), x = ~x, y = ~y, z = ~z, type = 'scatter3d', mode = 'lines+markers',
+               line = list(width = 15, color = '#DA16FF'),
+               marker = list(size = 5, color = '#AA0DFE'), source = "Plot3")
+fig %>% add_surface(data = all.points, x = ~x, y = ~y, z = ~z)
+```
+
+The above visualization looks pretty similar to a soap-film. Hence, it seems. We succeeded in simulating the soap-film.

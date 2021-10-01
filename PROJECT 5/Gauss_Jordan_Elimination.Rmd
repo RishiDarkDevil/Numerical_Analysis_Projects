@@ -1,0 +1,306 @@
+---
+title: "Gauss-Jordan Elimination"
+author: "Rishi Dey Chowdhury"
+date: "7/28/2021"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set()
+library(knitr)
+```
+
+Here we will implement the Gauss-Jordan Elimination Algorithm to reduce Matrices to **Row-Echelon Form** and **Reduced Row-Echelon Form(RREF)**.
+We will also use them to find out the Column Space, Row Space and Null Space Basis Vectors.
+
+### OBJECTIVE
+
+A program that will apply Gauss-Jordan elimination to an arbitrary matrix of order $m\times n$ over $\mathbf{R}$ .It should perform the row swaps only when the pivot is zero.
+The resulting form is called the reduced row echelon form (RREF) of the matrix.
+This form has the interesting property that any two matrices with the same size and same row space must have the same RREF.
+The program should also find bases of the column space, row space and null space of the matrix using the computed RREF.
+
+### CODE & RESULTS
+
+We will show the snippets of the codes and will explain what each part does.
+
+There are 3 steps on which Gauss-Jordan Elimination relies they are swapping rows, scaling rows and replacing rows.
+- The following code performs swapping of rows.
+
+```{r}
+# Type-I Matrix Operation
+swaprows <- function(m, row1, row2){
+  row.temp <- m[row1,]
+  m[row1,] <- m[row2,]
+  m[row2,] <- row.temp
+  return(m)
+}
+```
+
+-   The following code performs scaling of rows.
+
+```{r}
+# Type-II Matrix Operation
+scalerow <- function(m, row, k){
+  m[row,] <- m[row,]*k
+  return(m)
+}
+```
+
+-   The following code performs replacement of rows.
+
+```{r}
+# Type-III Matrix Operation
+replacerow <- function(m, row1, row2, k){
+  m[row2,] <- m[row2,] + m[row1,]*k
+  return(m)
+}
+```
+
+#### ROW-ECHELON FORM
+
+-   The following function uses the above 3 functions to perform Gauss-Jordan Elimination to reduce the Matrix to Row-Echelon Form.
+
+```{r}
+# Gaussian Elimination to Row-Echelon Form
+refmatrix <- function(m){
+  count.rows <- nrow(m)
+  count.cols <- ncol(m)
+  piv <- 1
+  
+  for (row.curr in 1:count.rows) {
+    if(piv <= count.cols){
+      i <- row.curr
+      while (m[i, piv] == 0 && i <= count.rows) {
+        i <- i+1
+        if(i > count.rows){
+          i <- row.curr
+          piv <- piv+1
+          if(piv > count.cols)
+            return(m)
+        }
+      }
+      if(i != row.curr){
+          m <- swaprows(m, i, row.curr)
+          rownames(m)[i] <- row.curr
+          rownames(m)[row.curr] <- i
+      }
+      for (j in row.curr:count.rows) 
+        if (j != row.curr) {
+          k <- m[j, piv] / m[row.curr, piv]
+          m <- replacerow(m, row.curr, j, -k)
+        }
+      piv <- piv+1
+    }
+  }
+  return(m)
+}
+```
+
+We move on to the next row and so on till we get non-zero pivot.
+
+Let's Perform Gauss-Jordan Elimination on a Matrix to reduce it to Row-Echelon Form.
+- The Matrix we will be using our function on is
+
+```{r}
+A <- matrix(c(2,8,5,4,4,5,0,8,4), 3)
+row.names(A) <- 1:3
+colnames(A) <- paste("x", 1:3, sep = '')
+kable(A)
+```
+
+-   The **Row-Echelon Form**
+
+```{r}
+kable(refmatrix(A))
+```
+
+#### REDUCED ROW-ECHELON FORM
+
+Here we make a slight modification in the above function to reduce the matrix to RREF that is we not only make the elements below pivot 0 we also try to reduce elements above it.
+
+```{r}
+# Gaussian Elimination for Reduced Row Echelon Form
+rrefmatrix <- function(m){
+  count.rows <- nrow(m)
+  count.cols <- ncol(m)
+  rank.count <- 0
+  piv.cols <- c()
+  piv <- 1
+  
+  for (row.curr in 1:count.rows) {
+    if(piv <= count.cols){
+      i <- row.curr
+      while (m[i,piv] == 0 && i <= count.rows) {
+        i <- i+1
+        if(i>count.rows){
+          i <- row.curr
+          piv <- piv+1
+          if (piv > count.cols){
+            return(list('RREF' = m, 'Rank' = rank.count, 'Pivs' = piv.cols))
+          }
+        }
+      }
+      rank.count <- rank.count + 1
+      if (i != row.curr) {
+        m <- swaprows(m, i, row.curr)
+        rownames(m)[i] <- row.curr
+        rownames(m)[row.curr] <- i
+      }
+      m <- scalerow(m, row.curr, 1/m[row.curr,piv])
+      for (j in 1:count.rows)
+        if (j != row.curr) {
+          k = m[j,piv] / m[row.curr,piv]
+          m <- replacerow(m, row.curr, j, -k)
+        }
+      piv.cols <- append(piv.cols, piv)
+      piv <- piv+1
+    }
+  }
+  return(list('RREF' = m, 'Rank' = rank.count, 'Pivs' = piv.cols))
+}
+```
+
+Now, since finding RREF also sheds light on the Rank and Pivotal Columns we get them as a result of performing this Reduction.
+
+Let's Try out our function on a Matrix.
+- The Matrix we will be using our function on is
+
+```{r}
+A <- matrix(c(2,8,5,4,4,5,0,8,4), 3)
+row.names(A) <- 1:3
+colnames(A) <- paste("x", 1:3, sep = '')
+kable(A)
+```
+
+-   The **Reduced Row-Echelon Form**
+
+```{r}
+result <- rrefmatrix(A)
+kable(result$RREF)
+kable(result$Rank, col.names = c("Rank"))
+kable(result$Pivs, col.names = c("Pivotal Columns"))
+```
+
+#### BASES OF 3 MOST IMPORTANT SPACES IN LINEAR ALGEBRA
+
+The idea which we use to find out the Bases is really a by-product of performing the Row-Reduction using Gauss-Jordan Elimination.
+The key things that allow us to do so are mentioned below:
+
+-    We perform Row Operations and hence the Row Space is unaltered and we see after performing Row Reduction we end up with all Linear Independent Row Vectors(Except the Null Vectors, if any) which indeed gives the Basis Vectors for the Row-Space.
+
+-    After Performing we get some Pivotal Columns.
+    The Pivotal Columns corresponding to original matrix before Row-Reduction gives the Basis Vectors for the Column Space of the Matrix.
+
+-   We after obtaining Reduced Row-Echelon Form transpose the matrix and reduce that transposed matrix to the Reduced Row-Echelon Form and we keep track of the Elementary Matrices used and the last n-r columns of the product of these Elementary Matrix gives us the Null Space Bases, where n is the number of rows of the elementary Matrix and r is the rank of the Matrix with which we started of our algorithm.
+
+In order to keep track of the Elementary Matrix(H), I made a little modification in the rrefmatrix Function.
+
+```{r}
+# Gaussian Elimination for Reduced Row Echelon Form
+rrefmatrix <- function(m){
+  count.rows <- nrow(m)
+  count.cols <- ncol(m)
+  rank.count <- 0
+  piv.cols <- c()
+  piv <- 1
+  H <- diag(1, count.rows)
+  
+  for (row.curr in 1:count.rows) {
+    if(piv <= count.cols){
+      i <- row.curr
+      while (m[i,piv] == 0 && i <= count.rows) {
+        i <- i+1
+        if(i>count.rows){
+          i <- row.curr
+          piv <- piv+1
+          if (piv > count.cols){
+            return(list('RREF' = m, 'Rank' = rank.count, 'Pivs' = piv.cols, 'H' = H))
+          }
+        }
+      }
+      rank.count <- rank.count + 1
+      if (i != row.curr) {
+        m <- swaprows(m, i, row.curr)
+        rownames(m)[i] <- row.curr
+        rownames(m)[row.curr] <- i
+        H1 <- diag(1, count.rows)
+        H1 <- swaprows(H1, i, row.curr)
+        H <- H1 %*% H
+      }
+      p <- 1/m[row.curr,piv]
+      m <- scalerow(m, row.curr, 1/m[row.curr,piv])
+      H2 <- diag(1, count.rows)
+      H2 <- scalerow(H2, row.curr, p)
+      H <- H2 %*% H
+      for (j in 1:count.rows)
+        if (j != row.curr) {
+          k = m[j,piv] / m[row.curr,piv]
+          m <- replacerow(m, row.curr, j, -k)
+          H3 <- diag(1, count.rows)
+          H3 <- replacerow(H3, row.curr, j, -k)
+          H <- H3 %*% H
+        }
+      piv.cols <- append(piv.cols, piv)
+      piv <- piv+1
+    }
+  }
+  return(list('RREF' = m, 'Rank' = rank.count, 'Pivs' = piv.cols, 'H' = H))
+}
+```
+
+The Following function finds the Bases of all the Spaces discussed above.
+
+```{r}
+# Finding Bases of Column Space, Rowspace and Null Space of a Matrix
+Find.Bases <- function(A){
+  rrefA <- rrefmatrix(A)
+  r <- rrefA$Rank
+  
+  # Finding the Column Space Basis
+  print("Column Space Basis Vectors:")
+  for (i in rrefA$Pivs){
+    print(A[,i])
+  }
+  # Finding the Row Space Basis
+  print("Row Space Basis Vectors:")
+  for (i in 1:min(nrow(A), ncol((A)))){
+    if(rrefA$RREF[i,i] != 0)
+      print(rrefA$RREF[i,])
+  }
+  # Finding the Null Space Basis
+  print("Null Space Basis Vectors:")
+  if(r == ncol(A)){
+    print("NULL")
+  }
+  else{
+    H <- rrefmatrix(t(rrefA$RREF))$H
+    for (i in (nrow(H)-(ncol(A)-r)+1):nrow(H))
+      print(H[i,])
+  }
+}
+```
+
+Let's Try out our above function on the following matrix.
+
+```{r}
+mat <- matrix(1:12, 4, 3)
+kable(mat)
+```
+
+```{r}
+Find.Bases(mat)
+```
+
+Just to be sure, let's see if the Null Space Basis really belongs to Null Space or not.
+
+```{r}
+mat %*% c(1, -2, 1)
+```
+
+Indeed it does.
+
+This wraps up our Objective.

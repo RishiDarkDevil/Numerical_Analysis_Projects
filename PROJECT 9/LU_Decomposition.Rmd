@@ -1,0 +1,175 @@
+---
+title: "LU Decomposition"
+author: "Rishi Dey Chowdhury"
+date: "7/30/2021"
+output: html_document
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set()
+library(knitr)
+```
+
+Here we are going to implement an algorithm to find out the
+$LU$-Decomposition of a Matrix Efficiently. We will then use it to solve
+System of Equations. \#\#\# OBJECTIVE Implement the efficient version of
+Crout's decomposition. Solve a system $AX=b$ by forward and backward
+substitution.
+
+### LU DECOMPOSITION and SOLVING SYSTEMS
+
+Whenever we have a Matrix whose $LU$-Decomposition in possible, where
+$L$ is lower triangular Matrix and $U$ is upper Triangular Matrix with
+$1$ across it's diagonal. We can write $A$ as a factorization $A=LU$ and
+we can solve the Matrix System $$Ax = b$$ $$LUx = b$$ Now, we can solve
+2 Systems Quickly by Forward and Backward Substitution to get the
+Solution that is $$Ly = b\ (Forward\ Substitution)$$
+$$Ux = y\ (Backward\ Substitution)$$ Thus, we get the solution $x$ to
+the original system.
+
+### CODE & RESULTS
+
+-   The following functions computes the $L$ and $U$ for a given matrix
+    for which $LU$-Decomposition is possible. We at no step explicitly
+    allocate separate space to store $L$ and $U$ as we are aware that
+    the diagonal Matrix of $U$ are bound to be $1$. So, we simple use
+    the space of the original Matrix to store $L$ and $U$ in it.
+
+```{r}
+# Computes the L matrix 
+L <- function(A, j) {
+  n <- nrow(A)
+  tot <- rep(0, n-j+1)
+  if (j > 1){
+    for (k in 1:(j-1))
+      tot <- tot + A[j:n, k] * A[k, j]
+  }
+  A[(j:n), j] <- A[(j:n), j] - tot
+  return(A)
+}
+
+# Computes the U matrix
+U <- function(A, i) {
+  n <- nrow(A)
+  tot <- rep(0, n-i)
+  if (i > 1){
+    for (k in 1:(i-1))
+      tot <- tot + A[k, (i+1):n] * A[i, k]
+  }
+  if(A[i, i] == 0)
+    stop("Singular Matrix Detected!")
+  A[i, (i+1):n] <- (A[i, (i+1):n] - tot) / A[i, i]
+  return(A)
+}
+```
+
+-   We now use the above functions to compute the $LU$-Decomposition.
+
+```{r}
+# Computes the LU Decomposition
+Compute.LU <- function(A) {
+  if(nrow(A) != ncol(A))
+    stop("Matrix is not square!")
+  
+  n <- nrow(A)
+  
+  for(i in 1:n) {
+    A <- L(A, i)
+    if(i < n)
+      A <- U(A, i)
+  }
+  
+  L <- matrix(rep(0, n^2), n, n)
+  U <- diag(n)
+  
+  for(j in 1:n)
+    L[j:n,j] <- A[j:n, j]
+  
+  for(i in 1:(n-1))
+    U[i, (i+1):n] <- A[i, (i+1):n]
+  
+  return(list("A" = A, "L"=L, "U"=U))
+}
+```
+
+Let's Try it out on some Matrix.
+
+```{r}
+A <- matrix(c(1,2,3,5,6,7,9,11,12), 3, 3)
+kable(A)
+```
+
+The $LU$-Decomposition of the above Matrix.
+
+```{r}
+decomp <- Compute.LU(A)
+kable(decomp$A, caption = "Packed Matrix")
+kable(decomp$L, caption = "L")
+kable(decomp$U, caption = "U")
+```
+
+The Specification of $L$ an $U$ being lower and upper triangular matrix
+with $U$ having diagonal elements as $1$ is met. Let's test if $A = LU$.
+
+```{r}
+kable(decomp$L %*% decomp$U, caption = "LU")
+```
+
+Indeed we get back the original matrix. - Now, we are going to use the
+above $LU$-Decomposition to obtain the solution for the System $Ax=b$.
+The Following code implements this Forward Substitution and Backward
+Substitution as discussed earlier.
+
+```{r}
+# Solve Linear System
+Solve.LU <- function(A, b){
+  LU <- Compute.LU(A)
+  n <- nrow(A)
+  
+  # Forward Substitution
+  y <- rep(0, n)
+  if (LU$A[1,1] == 0) 
+    stop("No Solution!")
+  y[1] <- b[1] / LU$A[1,1] 
+  for (i in 2:n) {
+    if (LU$A[i,i] == 0)
+      stop("No Solution!")
+    y[i] <- (b[i] - sum(LU$A[i, 1:(i-1)]*y[1:(i-1)])) / LU$A[i,i] 
+  }
+  
+  # Backward Substitution
+  x <- rep(0, n)
+  x[n] <- y[n]
+  for (i in (n-1):1) {
+    x[i] <- y[i] - sum(LU$A[i, (i+1):n]*x[(i+1):n])
+  }
+  
+  return(list("LU"=LU, "x"=x))
+}
+```
+
+Let's Test it on the Following System.
+
+```{r}
+A <- matrix(c(2,4,-6,4,3,7,-10,6,0,2,0,4,0,0,1,5), 4, 4)
+kable(A, caption = "A")
+kable(c(1,2,1,0), col.names = "b")
+```
+
+The solution is
+
+```{r}
+sol <- Solve.LU(A, c(1,2,1,0))
+kable(sol$x, caption = "Soln.")
+```
+
+Let's check if $Ax=b$.
+
+```{r}
+kable(A %*% sol$x, col.names = "Ax")
+```
+
+Indeed we get $b$ and hence it is a solution to the System.
